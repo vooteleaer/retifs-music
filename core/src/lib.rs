@@ -463,6 +463,12 @@ impl Library {
         self.read_range(ns, cap, 0, size, 30_000).ok()
     }
 
+    /// A crash or trouble report to retifs (ADR-0036), which keeps it for the
+    /// user's crash library.
+    pub fn crash_report(&self, kind: &str, source: &str, text: &str) -> Result<(), String> {
+        self.request(Request::CrashReport { kind: kind.into(), source: source.into(), text: text.into() }).map(|_| ())
+    }
+
     pub fn set_favorite(&self, ns: &str, id: &str, on: bool) -> Result<(), String> {
         let (attrs, unset) = if on { (vec![("favorite".to_string(), AttrValue::Bool(true))], vec![]) } else { (vec![], vec!["favorite".to_string()]) };
         self.request(Request::RecordSet { ns: ns.into(), id: id.into(), attrs, unset, data: None }).map(|_| ())

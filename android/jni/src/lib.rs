@@ -137,6 +137,31 @@ pub extern "system" fn Java_org_retifs_music_Core_changeCounts<'l>(mut env: JNIE
     out(&mut env, r.to_string())
 }
 
+/// Where the core's own panics are written (ADR-0036): `dir`, each report
+/// starting with `header`; the app sends them to retifs at its next start.
+#[no_mangle]
+pub extern "system" fn Java_org_retifs_music_Core_crashDir<'l>(mut env: JNIEnv<'l>, _: JClass<'l>, dir: JString<'l>, header: JString<'l>) {
+    let (dir, header) = (arg(&mut env, &dir), arg(&mut env, &header));
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        previous(info);
+        let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+        let thread = std::thread::current().name().unwrap_or("unnamed").to_string();
+        let text = format!("{header}Panic in the music core, thread '{thread}': {info}\n\n--- backtrace ---\n{}", std::backtrace::Backtrace::force_capture());
+        let part = format!("{dir}/.{ms}-app_panic.txt.part");
+        if std::fs::write(&part, text).is_ok() {
+            let _ = std::fs::rename(&part, format!("{dir}/{ms}-app_panic.txt"));
+        }
+    }));
+}
+
+/// A crash or trouble report to retifs (ADR-0036): whether it took it.
+#[no_mangle]
+pub extern "system" fn Java_org_retifs_music_Core_crashReport<'l>(mut env: JNIEnv<'l>, _: JClass<'l>, kind: JString<'l>, source: JString<'l>, text: JString<'l>) -> jboolean {
+    let (kind, source, text) = (arg(&mut env, &kind), arg(&mut env, &source), arg(&mut env, &text));
+    with(|l| l.crash_report(&kind, &source, &text).is_ok()) as jboolean
+}
+
 /// Waits until a library in `known` (`{name: count}`) changes, for at most
 /// `timeout_ms`: `{"changed", "known"}`, the counts brought up to date.
 #[no_mangle]
